@@ -20,6 +20,12 @@ func (app *Application) routes() http.Handler {
 	mux.HandlerFunc("POST", "/category", app.addCategory)
 	mux.PUT("/category/:id", app.editCategory)
 
+	//review
+	mux.HandlerFunc("GET", "/reviews", app.getReviews)
+	mux.GET("/review/:id", app.getReviewByID)
+	mux.HandlerFunc("POST", "/review", app.addReview)
+	mux.PUT("/review/:id", app.editReview)
+
 
 	return app.recoverPanic(mux)
 }
