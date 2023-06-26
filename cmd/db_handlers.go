@@ -79,8 +79,8 @@ func (app *Application) GetAllReviews() ([]dto.Review, error) {
 
 	for rows.Next() {
 		var rev dto.Review
-		if err := rows.Scan(&rev.ReviewID, &rev.ReviewDate, &rev.ReviewDescription, &rev.ReviewLocation, 
-			&rev.ReviewStar, &rev.ReviewUserIcon, &rev.ReviewUserLocation, &rev.ReviewUserName); err != nil {
+		if err := rows.Scan(&rev.ReviewID, &rev.ReviewUserName, &rev.ReviewUserIcon, &rev.ReviewUserLocation, 
+			&rev.ReviewDescription, &rev.ReviewLocation, &rev.ReviewDate, &rev.ReviewStar); err != nil {
 			return reviews, err
 		}
 		reviews = append(reviews, rev)
@@ -93,8 +93,8 @@ func (app *Application) GetReviewByID(id string) (dto.Review, error) {
 	//var err error
 	rev := dto.Review{}
 	row := app.DB.QueryRow(`SELECT * FROM reviews WHERE review_id=$1;`, id)
-	if err := row.Scan(&rev.ReviewID, &rev.ReviewDate, &rev.ReviewDescription, &rev.ReviewLocation, 
-		&rev.ReviewStar, &rev.ReviewUserIcon, &rev.ReviewUserLocation, &rev.ReviewUserName); err != nil {
+	if err := row.Scan(&rev.ReviewID, &rev.ReviewUserName, &rev.ReviewUserIcon, &rev.ReviewUserLocation, 
+		&rev.ReviewDescription, &rev.ReviewLocation, &rev.ReviewDate, &rev.ReviewStar); err != nil {
 		return rev, err
 	}
 	return rev, nil
