@@ -6,6 +6,7 @@ import (
 
 	"travelo/internal/database"
 	"github.com/go-playground/validator/v10"
+	"travelo/internal/graphql"
 )
 
 type Config struct {
@@ -23,4 +24,5 @@ type Application struct {
 	Logger    *log.Logger
 	wg        sync.WaitGroup
 	Validator *validator.Validate
+	GraphqlClient *graphql.GraphqlClient
 }

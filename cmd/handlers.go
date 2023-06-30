@@ -25,9 +25,13 @@ func (app *Application) status(w http.ResponseWriter, r *http.Request) {
 
 func (app *Application) getCategories(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
 	var err error
-	data, err := app.GetAllCategory()
+	var data []dto.Category
+
+	res, errs := app.getAllUser()
+	if len(res) > 1 || errs == nil {
+		data, err = app.GetAllCategory()
+	}
 	err = response.JSONCustom(w, data, err)
 }
 

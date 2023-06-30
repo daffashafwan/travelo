@@ -7,6 +7,7 @@ import (
 
 	"travelo/internal/database"
 	"travelo/internal/env"
+	"travelo/internal/graphql"
 	"travelo/internal/version"
 
 	"github.com/go-playground/validator/v10"
@@ -37,11 +38,14 @@ func Run(logger *log.Logger) error {
 
 	validate := validator.New()
 
+	gql := graphql.NewGraphqlClient("https://exciting-deer-66.hasura.app/v1/graphql")
+
 	app := &Application{
 		Config: cfg,
 		DB:     db,
 		Logger: logger,
 		Validator: validate,
+		GraphqlClient: gql,
 	}
 
 	return app.serveHTTP()
