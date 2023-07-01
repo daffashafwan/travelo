@@ -9,7 +9,7 @@ import (
 	"travelo/internal/graphql"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/go-redis/redis/v8"
+	"github.com/go-redis/redis"
 )
 
 type Config struct {

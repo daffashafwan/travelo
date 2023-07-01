@@ -6,13 +6,18 @@ import (
 	"time"
 )
 
-func GenerateJWT(userID, username string) string {
+type JWTClaims struct {
+	Username string `json:"username"`
+	jwt.StandardClaims
+}
+
+func GenerateJWT(username string) string {
 	// Define the JWT claims
-	claims := jwt.MapClaims{
-		"sub": userID,                          // Subject (User ID)
-		"username": username,                   // Additional user data (optional)
-		"exp": time.Now().Add(time.Hour).Unix(), // Expiration time
-		"iat": time.Now().Unix(),                // Issued at
+	claims := JWTClaims{
+		Username: username,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: time.Now().Add(time.Hour).Unix(), // Token expires in 1 hour
+		},
 	}
 
 	// Create the JWT token

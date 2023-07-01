@@ -1,16 +1,17 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"time"
 
 	"travelo/internal/graphql"
 	"travelo/internal/response"
 
+	"github.com/go-redis/redis"
 	"github.com/julienschmidt/httprouter"
 
 	"travelo/internal/dto"
@@ -41,13 +42,13 @@ func (app *Application) login(w http.ResponseWriter, r *http.Request) {
 
 	err = json.Unmarshal(reqBody, &user)
 	if err != nil {
-		err = response.JSONCustom(w, res, err)
+		err = response.JSONCustom(w, res, err, http.StatusBadRequest)
 		return
 	}
 
 	err = app.Validator.Struct(user)
 	if err != nil {
-		err = response.JSONCustom(w, res, err)
+		err = response.JSONCustom(w, res, err, http.StatusBadRequest)
 		return
 	}
 
@@ -56,8 +57,8 @@ func (app *Application) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	graphqlUser, err = app.graphqlQueryUser(graphql.GetUserByUserName, variables)
-	if err != nil{
-		err = response.JSONCustom(w, res, err)
+	if err != nil {
+		err = response.JSONCustom(w, res, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -70,21 +71,21 @@ func (app *Application) login(w http.ResponseWriter, r *http.Request) {
 
 	err = bcrypt.CompareHashAndPassword([]byte(res.Password), []byte(user.Password))
 	if err != nil {
-		err = response.JSONCustom(w, res, errors.New("Invalid username or password"))
+		err = response.JSONCustom(w, res, errors.New("Invalid username or password"), http.StatusUnauthorized)
 		return
 	}
 
-	jwt := utilities.GenerateJWT(res.ID, res.Username)
+	jwt := utilities.GenerateJWT(res.Username)
 
-	err = app.Redis.Set(context.Background(), res.ID, jwt, time.Hour).Err()
-	if err != nil{
-		err = response.JSONCustom(w, res, errors.New("Failed set redis jwt"))
+	err = app.Redis.Set(jwt, "valid", time.Hour).Err()
+	if err != nil {
+		err = response.JSONCustom(w, res, errors.New("Failed set redis jwt"), http.StatusInternalServerError)
 		return
 	}
 
 	res.JWTToken = jwt
 
-	err = response.JSONCustom(w, res, err)
+	err = response.JSONCustom(w, res, err, http.StatusOK)
 }
 
 func (app *Application) register(w http.ResponseWriter, r *http.Request) {
@@ -97,19 +98,19 @@ func (app *Application) register(w http.ResponseWriter, r *http.Request) {
 
 	err = json.Unmarshal(reqBody, &user)
 	if err != nil {
-		err = response.JSONCustom(w, res, err)
+		err = response.JSONCustom(w, res, err, http.StatusBadRequest)
 		return
 	}
 
 	err = app.Validator.Struct(user)
 	if err != nil {
-		err = response.JSONCustom(w, res, err)
+		err = response.JSONCustom(w, res, err, http.StatusBadRequest)
 		return
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		err = response.JSONCustom(w, res, err)
+		err = response.JSONCustom(w, res, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -121,7 +122,7 @@ func (app *Application) register(w http.ResponseWriter, r *http.Request) {
 
 	graphqlUser, err = app.graphqlMutationUser(graphql.InsertOneUser, variables)
 	if err != nil {
-		err = response.JSONCustom(w, res, err)
+		err = response.JSONCustom(w, res, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -132,7 +133,7 @@ func (app *Application) register(w http.ResponseWriter, r *http.Request) {
 		Password: graphqlUser.Data.Data.UserPassword,
 	}
 
-	err = response.JSONCustom(w, res, err)
+	err = response.JSONCustom(w, res, err, http.StatusOK)
 }
 
 func (app *Application) getCategories(w http.ResponseWriter, r *http.Request) {
@@ -140,95 +141,259 @@ func (app *Application) getCategories(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var data []dto.Category
 
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil{
+		err = response.JSONCustom(w, nil, err, http.StatusUnauthorized)
+		return
+	}
+
 	data, err = app.GetAllCategory()
 
-	err = response.JSONCustom(w, data, err)
+	err = response.JSONCustom(w, data, err, http.StatusOK)
 }
 
 func (app *Application) getCategoryByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var err error
-	data, err := app.GetCategoryByID(ps.ByName("id"))
+	var data dto.Category
 
-	err = response.JSONCustom(w, data, err)
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil{
+		err = response.JSONCustom(w, data, err, http.StatusUnauthorized)
+		return
+	}
+	
+	data, err = app.GetCategoryByID(ps.ByName("id"))
+
+	err = response.JSONCustom(w, data, err, http.StatusOK)
 }
 
 func (app *Application) addCategory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	reqBody, _ := ioutil.ReadAll(r.Body)
-	var customer, res dto.Category
-	var err error
-	json.Unmarshal(reqBody, &customer)
 
-	err = app.Validator.Struct(customer)
-
-	if err == nil {
-		res, err = app.PostCategory(customer)
+	// Read request body
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
 	}
 
-	err = response.JSONCustom(w, res, err)
+	// Unmarshal request body into a Category struct
+	var category dto.Category
+	err = json.Unmarshal(reqBody, &category)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Validate the category struct
+	err = app.Validator.Struct(category)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Check authorization
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusUnauthorized)
+		return
+	}
+
+	// Add the category
+	res, err := app.PostCategory(category)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	err = response.JSONCustom(w, res, nil, http.StatusOK)
 }
 
 func (app *Application) editCategory(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	reqBody, _ := ioutil.ReadAll(r.Body)
-	var customer, res dto.Category
-	var err error
-	json.Unmarshal(reqBody, &customer)
 
-	err = app.Validator.Struct(customer)
-
-	if err == nil {
-		res, err = app.UpdateCategory(customer, ps.ByName("id"))
+	// Read request body
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
 	}
 
-	err = response.JSONCustom(w, res, err)
+	// Unmarshal request body into a Category struct
+	var category dto.Category
+	err = json.Unmarshal(reqBody, &category)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Validate the category struct
+	err = app.Validator.Struct(category)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Check authorization
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusUnauthorized)
+		return
+	}
+
+	// Update the category
+	res, err := app.UpdateCategory(category, ps.ByName("id"))
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	err = response.JSONCustom(w, res, nil, http.StatusOK)
 }
+
 
 func (app *Application) getReviews(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	var err error
+	// Check authorization
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusUnauthorized)
+		return
+	}
+
+	// Get all reviews
 	data, err := app.GetAllReviews()
-	err = response.JSONCustom(w, data, err)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	err = response.JSONCustom(w, data, nil, http.StatusOK)
 }
+
 
 func (app *Application) getReviewByID(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	var err error
-	data, err := app.GetReviewByID(ps.ByName("id"))
 
-	err = response.JSONCustom(w, data, err)
+	// Check authorization
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusUnauthorized)
+		return
+	}
+
+	// Get review by ID
+	data, err := app.GetReviewByID(ps.ByName("id"))
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	err = response.JSONCustom(w, data, nil, http.StatusOK)
 }
+
 
 func (app *Application) addReview(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	reqBody, _ := ioutil.ReadAll(r.Body)
-	var customer, res dto.Review
-	var err error
-	json.Unmarshal(reqBody, &customer)
 
-	err = app.Validator.Struct(customer)
-
-	if err == nil {
-		res, err = app.PostReview(customer)
+	// Read request body
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
 	}
 
-	err = response.JSONCustom(w, res, err)
+	var customer, res dto.Review
+	// Unmarshal request body into customer
+	err = json.Unmarshal(reqBody, &customer)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Validate customer data
+	err = app.Validator.Struct(customer)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Check authorization
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusUnauthorized)
+		return
+	}
+
+	// Post review
+	res, err = app.PostReview(customer)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	err = response.JSONCustom(w, res, nil, http.StatusOK)
 }
+
 
 func (app *Application) editReview(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	reqBody, _ := ioutil.ReadAll(r.Body)
-	var customer, res dto.Review
-	var err error
-	json.Unmarshal(reqBody, &customer)
 
-	err = app.Validator.Struct(customer)
-
-	if err == nil {
-		res, err = app.UpdateReview(customer, ps.ByName("id"))
+	// Read request body
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
 	}
 
-	err = response.JSONCustom(w, res, err)
+	var customer, res dto.Review
+	// Unmarshal request body into customer
+	err = json.Unmarshal(reqBody, &customer)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Validate customer data
+	err = app.Validator.Struct(customer)
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusBadRequest)
+		return
+	}
+
+	// Check authorization
+	if err := app.checkAuth(r.Header.Get("Authorization")); err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusUnauthorized)
+		return
+	}
+
+	// Update review
+	res, err = app.UpdateReview(customer, ps.ByName("id"))
+	if err != nil {
+		err = response.JSONCustom(w, nil, err, http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	err = response.JSONCustom(w, res, nil, http.StatusOK)
+}
+
+
+func (app *Application) checkAuth(authHeader string) error {
+
+	// Check if the Authorization header is present
+	if authHeader == "" {
+		return errors.New("Auth Header not present")
+	}
+
+	jwtToken := strings.TrimPrefix(authHeader, "Bearer ")
+
+	err := app.Redis.Get(jwtToken).Err()
+	if err == redis.Nil {
+		return errors.New("JWT not found")
+	} else if err != nil {
+		return err
+	}
+
+	return nil
 }

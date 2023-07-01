@@ -14,17 +14,17 @@ func JSON(w http.ResponseWriter, status int, data any) error {
 	return JSONWithHeaders(w, status, dataJson, nil)
 }
 
-func JSONCustom(w http.ResponseWriter, data any, err error) error {	
-	status := http.StatusOK
-	dataJson := dto.BaseResponse{
-		Status: strconv.Itoa(status) + " OK",
-		Data: data,
-		Message: "Successful",
+func JSONCustom(w http.ResponseWriter, data any, err error, status int) error {	
+	
+	message := "Successful"
+	if err != nil {
+		message = err.Error()
 	}
-	if err != nil{
-		status = http.StatusInternalServerError
-		dataJson.Status = strconv.Itoa(status) + " Internal Server Error"
-		dataJson.Message = err.Error()
+
+	dataJson := dto.BaseResponse{
+		Status:  strconv.Itoa(status) + " " + http.StatusText(status),
+		Data:    data,
+		Message: message,
 	}
 	return JSONWithHeaders(w, status, dataJson, nil)
 }
