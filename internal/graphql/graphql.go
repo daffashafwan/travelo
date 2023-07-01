@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 )
@@ -73,7 +74,19 @@ func (c *GraphqlClient) Query(query string, variables map[string]interface{}) ([
 	req.Header.Set("x-hasura-admin-secret", "p7q8lnZNaZjoHPtSzFgQcVwzj1mrM56GF5ysp4h0Qw7xI1rhpUQg67py9PzXTPiE")
 
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second, // Set Keep-Alive duration
+			}).DialContext,
+			MaxIdleConns:          100,           // Maximum number of idle connections to keep alive
+			IdleConnTimeout:       90 * time.Second, // Maximum duration for an idle connection to be kept alive
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			DisableKeepAlives:     false, // Enable Keep-Alive
+		},
 	}
 	response, err := client.Do(req)
 	if err != nil {

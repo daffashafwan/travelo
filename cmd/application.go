@@ -4,10 +4,12 @@ import (
 	"log"
 	"sync"
 
-	"travelo/internal/database"
-	"github.com/go-playground/validator/v10"
-	"travelo/internal/graphql"
 	"travelo/internal/custom_logger"
+	"travelo/internal/database"
+	"travelo/internal/graphql"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/go-redis/redis/v8"
 )
 
 type Config struct {
@@ -20,11 +22,12 @@ type Config struct {
 }
 
 type Application struct {
-	Config    Config
-	DB        *database.DB
-	Logger    *log.Logger
-	wg        sync.WaitGroup
-	Validator *validator.Validate
+	Config        Config
+	DB            *database.DB
+	Logger        *log.Logger
+	wg            sync.WaitGroup
+	Validator     *validator.Validate
 	GraphqlClient *graphql.GraphqlClient
-	CustomLogger *customlogger.Logger
+	CustomLogger  *customlogger.Logger
+	Redis         *redis.Client
 }

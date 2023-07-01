@@ -12,6 +12,7 @@ import (
 	"travelo/internal/version"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/go-redis/redis/v8"
 )
 
 func Run(logger *log.Logger) error {
@@ -46,6 +47,10 @@ func Run(logger *log.Logger) error {
 		return err
 	}
 
+	client := redis.NewClient(&redis.Options{
+        Addr: "localhost:6379", // Redis server address
+    })
+
 	app := &Application{
 		Config: cfg,
 		DB:     db,
@@ -53,6 +58,7 @@ func Run(logger *log.Logger) error {
 		Validator: validate,
 		GraphqlClient: gql,
 		CustomLogger: customLog,
+		Redis: client,
 	}
 
 	return app.serveHTTP()

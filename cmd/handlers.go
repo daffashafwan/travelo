@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"travelo/internal/graphql"
 	"travelo/internal/response"
@@ -12,6 +14,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"travelo/internal/dto"
+
+	"travelo/internal/utilities"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -69,6 +73,16 @@ func (app *Application) login(w http.ResponseWriter, r *http.Request) {
 		err = response.JSONCustom(w, res, errors.New("Invalid username or password"))
 		return
 	}
+
+	jwt := utilities.GenerateJWT(res.ID, res.Username)
+
+	err = app.Redis.Set(context.Background(), res.ID, jwt, time.Hour).Err()
+	if err != nil{
+		err = response.JSONCustom(w, res, errors.New("Failed set redis jwt"))
+		return
+	}
+
+	res.JWTToken = jwt
 
 	err = response.JSONCustom(w, res, err)
 }
