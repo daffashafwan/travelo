@@ -13,3 +13,4 @@
 [2023-07-01 12:23:45] map[field 'use' not found in type: 'query_root': [code] : validation-failed [path] : $.selectionSet.use]
 [2023-07-01 12:23:46] map[field 'use' not found in type: 'query_root': [code] : validation-failed [path] : $.selectionSet.use]
 [2023-07-01 12:23:46] map[field 'use' not found in type: 'query_root': [code] : validation-failed [path] : $.selectionSet.use]
+[2023-07-01 16:18:04] map[Uniqueness violation. duplicate key value violates unique constraint "user_user_username_key": [code]: constraint-violation [path]: $.selectionSet.insert_user_one.args.object]

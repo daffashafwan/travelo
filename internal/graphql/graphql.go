@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 const (
@@ -19,9 +20,9 @@ const (
 	  }
 	`
 
-	GetUserByUserNamePassword string = `
-	query MyQuery($username: String!, $password: String!) {
-		user(where: {user_username: {_eq: $username}, user_password: {_eq: $password}}) {
+	GetUserByUserName string = `
+	query MyQuery($username: String!) {
+		user(where: {user_username: {_eq: $username}}) {
 		  user_name
 		  user_username
 		  user_id
@@ -29,7 +30,7 @@ const (
 		}
 	  }
 	`
-	
+
 	InsertOneUser string = `
 	mutation MyMutation ($username: String!, $name: String!, $password: String!){
 		insert_user_one(object: {user_name: $name, user_password: $password, user_username: $username}) {
@@ -71,7 +72,9 @@ func (c *GraphqlClient) Query(query string, variables map[string]interface{}) ([
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("x-hasura-admin-secret", "p7q8lnZNaZjoHPtSzFgQcVwzj1mrM56GF5ysp4h0Qw7xI1rhpUQg67py9PzXTPiE")
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	response, err := client.Do(req)
 	if err != nil {
 		return nil, err

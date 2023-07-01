@@ -14,6 +14,10 @@ func (app *Application) routes() http.Handler {
 
 	mux.HandlerFunc("GET", "/status", app.status)
 
+	//user
+	mux.HandlerFunc("POST", "/user/login", app.login)
+	mux.HandlerFunc("POST", "/user/register", app.register)
+
 	//category
 	mux.HandlerFunc("GET", "/categories", app.getCategories)
 	mux.GET("/category/:id", app.getCategoryByID)

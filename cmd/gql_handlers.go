@@ -23,6 +23,10 @@ func (app *Application) graphqlQueryUser(query string, variables map[string]inte
 		return graphql.UserQueryResponse{}, err
 	}
 
+	if len(response.Data.Data) < 1 {
+		return graphql.UserQueryResponse{}, errors.New("Invalid username or password")
+	}
+
 	return response,nil
 }
 

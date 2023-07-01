@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"travelo/internal/dto"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func (app *Application) status(w http.ResponseWriter, r *http.Request) {
@@ -24,30 +27,95 @@ func (app *Application) status(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (app *Application) login(w http.ResponseWriter, r *http.Request){
+func (app *Application) login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	reqBody, _ := ioutil.ReadAll(r.Body)
-	var user, res dto.User
+	var user dto.User
+	var res dto.User
 	var graphqlUser graphql.UserQueryResponse
 	var err error
-	json.Unmarshal(reqBody, &user)
+
+	err = json.Unmarshal(reqBody, &user)
+	if err != nil {
+		err = response.JSONCustom(w, res, err)
+		return
+	}
 
 	err = app.Validator.Struct(user)
+	if err != nil {
+		err = response.JSONCustom(w, res, err)
+		return
+	}
 
-	if err == nil {
-		variables := map[string]interface{}{
-			"username" : user.Username,
-			"password" : user.Password,
-		}
-		graphqlUser, err = app.graphqlQueryUser(graphql.GetUserByUserNamePassword, variables)
-		if err == nil {
-			res = dto.User{
-				ID: graphqlUser.Data.Data[0].UserID,
-				Name: graphqlUser.Data.Data[0].UserName,
-				Username: graphqlUser.Data.Data[0].UserUsername,
-				Password: graphqlUser.Data.Data[0].UserPassword,
-			}
-		}
+	variables := map[string]interface{}{
+		"username": user.Username,
+	}
+
+	graphqlUser, err = app.graphqlQueryUser(graphql.GetUserByUserName, variables)
+	if err != nil{
+		err = response.JSONCustom(w, res, err)
+		return
+	}
+
+	res = dto.User{
+		ID:       graphqlUser.Data.Data[0].UserID,
+		Name:     graphqlUser.Data.Data[0].UserName,
+		Username: graphqlUser.Data.Data[0].UserUsername,
+		Password: graphqlUser.Data.Data[0].UserPassword,
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(res.Password), []byte(user.Password))
+	if err != nil {
+		err = response.JSONCustom(w, res, errors.New("Invalid username or password"))
+		return
+	}
+
+	err = response.JSONCustom(w, res, err)
+}
+
+func (app *Application) register(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	reqBody, _ := ioutil.ReadAll(r.Body)
+	var user dto.User
+	var res dto.User
+	var graphqlUser graphql.UserMutationResponse
+	var err error
+
+	err = json.Unmarshal(reqBody, &user)
+	if err != nil {
+		err = response.JSONCustom(w, res, err)
+		return
+	}
+
+	err = app.Validator.Struct(user)
+	if err != nil {
+		err = response.JSONCustom(w, res, err)
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		err = response.JSONCustom(w, res, err)
+		return
+	}
+
+	variables := map[string]interface{}{
+		"username": user.Username,
+		"password": string(hashedPassword),
+		"name":     user.Name,
+	}
+
+	graphqlUser, err = app.graphqlMutationUser(graphql.InsertOneUser, variables)
+	if err != nil {
+		err = response.JSONCustom(w, res, err)
+		return
+	}
+
+	res = dto.User{
+		ID:       graphqlUser.Data.Data.UserID,
+		Name:     graphqlUser.Data.Data.UserName,
+		Username: graphqlUser.Data.Data.UserUsername,
+		Password: graphqlUser.Data.Data.UserPassword,
 	}
 
 	err = response.JSONCustom(w, res, err)
@@ -105,7 +173,7 @@ func (app *Application) editCategory(w http.ResponseWriter, r *http.Request, ps 
 
 func (app *Application) getReviews(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	var err error
 	data, err := app.GetAllReviews()
 	err = response.JSONCustom(w, data, err)
