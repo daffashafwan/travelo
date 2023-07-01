@@ -7,6 +7,41 @@ import (
 	"net/http"
 )
 
+const (
+	GetAllUser string = `
+	query MyQuery {
+		user {
+		  user_name
+		  user_id
+		  user_username
+		  user_password
+		}
+	  }
+	`
+
+	GetUserByUserNamePassword string = `
+	query MyQuery($username: String!, $password: String!) {
+		user(where: {user_username: {_eq: $username}, user_password: {_eq: $password}}) {
+		  user_name
+		  user_username
+		  user_id
+		  user_password
+		}
+	  }
+	`
+	
+	InsertOneUser string = `
+	mutation MyMutation ($username: String!, $name: String!, $password: String!){
+		insert_user_one(object: {user_name: $name, user_password: $password, user_username: $username}) {
+		  user_id
+		  user_name
+		  user_password
+		  user_username
+		}
+	  }
+	`
+)
+
 type GraphqlClient struct {
 	url string
 }
@@ -17,9 +52,10 @@ func NewGraphqlClient(url string) *GraphqlClient {
 	}
 }
 
-func (c *GraphqlClient) Query(query string) ([]byte, error) {
+func (c *GraphqlClient) Query(query string, variables map[string]interface{}) ([]byte, error) {
 	requestBody := &GraphqlRequest{
 		Query: query,
+		Variables: variables,
 	}
 
 	jsonPayload, err := json.Marshal(requestBody)

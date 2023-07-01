@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	customlogger "travelo/internal/custom_logger"
 	"travelo/internal/database"
 	"travelo/internal/env"
 	"travelo/internal/graphql"
@@ -40,12 +41,18 @@ func Run(logger *log.Logger) error {
 
 	gql := graphql.NewGraphqlClient("https://exciting-deer-66.hasura.app/v1/graphql")
 
+	customLog, err := customlogger.NewLogger("app.log")
+	if err != nil {
+		return err
+	}
+
 	app := &Application{
 		Config: cfg,
 		DB:     db,
 		Logger: logger,
 		Validator: validate,
 		GraphqlClient: gql,
+		CustomLogger: customLog,
 	}
 
 	return app.serveHTTP()

@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"travelo/internal/graphql"
 	"travelo/internal/response"
 
 	"github.com/julienschmidt/httprouter"
@@ -23,15 +24,42 @@ func (app *Application) status(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (app *Application) login(w http.ResponseWriter, r *http.Request){
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	reqBody, _ := ioutil.ReadAll(r.Body)
+	var user, res dto.User
+	var graphqlUser graphql.UserQueryResponse
+	var err error
+	json.Unmarshal(reqBody, &user)
+
+	err = app.Validator.Struct(user)
+
+	if err == nil {
+		variables := map[string]interface{}{
+			"username" : user.Username,
+			"password" : user.Password,
+		}
+		graphqlUser, err = app.graphqlQueryUser(graphql.GetUserByUserNamePassword, variables)
+		if err == nil {
+			res = dto.User{
+				ID: graphqlUser.Data.Data[0].UserID,
+				Name: graphqlUser.Data.Data[0].UserName,
+				Username: graphqlUser.Data.Data[0].UserUsername,
+				Password: graphqlUser.Data.Data[0].UserPassword,
+			}
+		}
+	}
+
+	err = response.JSONCustom(w, res, err)
+}
+
 func (app *Application) getCategories(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var err error
 	var data []dto.Category
 
-	res, errs := app.getAllUser()
-	if len(res) > 1 || errs == nil {
-		data, err = app.GetAllCategory()
-	}
+	data, err = app.GetAllCategory()
+
 	err = response.JSONCustom(w, data, err)
 }
 
